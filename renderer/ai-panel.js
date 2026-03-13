@@ -285,7 +285,7 @@ async function handleGenerateOutline() {
       document.getElementById('ai-outline').value = cleanOutline
       renderOutlinePreview(cleanOutline)
       showProgress(`正在生成大纲... ${total} 字符`)
-    }, 16000)
+    }, 128000)
 
     currentOutline = outline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '').trim()
     document.getElementById('ai-outline').value = currentOutline
