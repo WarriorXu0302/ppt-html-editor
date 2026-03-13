@@ -14,6 +14,15 @@
 </head>
 <body>
 
+<!-- ── Splash Screen ───────────────────────────────────────────────────── -->
+<div id="splash">
+  <div class="splash-content">
+    <div class="splash-logo">Slide X</div>
+    <div class="splash-tagline">让想法顺滑登场</div>
+    <div class="splash-glow"></div>
+  </div>
+</div>
+
 <div id="app">
 
   <!-- ── Toolbar ─────────────────────────────────────────────────────── -->
@@ -300,6 +309,18 @@ const thumbObserver = new MutationObserver(() => {
   slideCountEl.textContent = count + ' 页'
 })
 thumbObserver.observe(document.getElementById('thumbnails'), { childList: true })
+
+// ── Splash screen removal ──
+const splash = document.getElementById('splash')
+if (splash) {
+  splash.addEventListener('animationend', (e) => {
+    if (e.animationName === 'splashFadeOut') {
+      splash.classList.add('hidden')
+    }
+  })
+  // Fallback: remove after 3s in case animation doesn't fire
+  setTimeout(() => splash.classList.add('hidden'), 3000)
+}
 </script>
 
 <!-- ── App Entry Point ──────────────────────────────────────────────────── -->

@@ -46,6 +46,113 @@ html, body {
   font-size: 13px;
 }
 
+/* ── Splash Screen ─────────────────────────────────────────────────────── */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  animation: splashFadeOut 0.6s ease-out 2.2s forwards;
+  pointer-events: none;
+}
+
+#splash.hidden {
+  display: none;
+}
+
+.splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+}
+
+.splash-logo {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  background: var(--gradient-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  opacity: 0;
+  transform: scale(0.8) translateY(20px);
+  animation: splashLogoIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+}
+
+.splash-tagline {
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  letter-spacing: 4px;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: splashTaglineIn 0.6s ease-out 0.8s forwards;
+}
+
+.splash-glow {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.3) 0%, rgba(236, 72, 153, 0.2) 40%, transparent 70%);
+  filter: blur(60px);
+  opacity: 0;
+  animation: splashGlowPulse 2s ease-in-out 0.3s forwards;
+  pointer-events: none;
+}
+
+@keyframes splashLogoIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes splashTaglineIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splashGlowPulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes splashFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
 /* ── Layout ────────────────────────────────────────────────────────────── */
 #app {
   display: flex;
