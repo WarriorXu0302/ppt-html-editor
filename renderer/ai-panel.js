@@ -5,6 +5,11 @@
 import { STYLE_TEMPLATES, getTemplateById, buildStylePrompt } from './style-templates.js'
 import { detectIntent } from './intent-detector.js'
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const SLIDE_WIDTH = 1280
+const SLIDE_HEIGHT = 720
+
 let currentAbortController = null
 let onNewPPT = null
 let onModifySlide = null
@@ -13,6 +18,40 @@ let getState = null
 // Outline-first generation state
 let currentOutline = ''
 let generationPhase = 'idle' // 'idle' | 'outline' | 'ppt'
+
+// Cached DOM elements for streaming (avoids repeated queries)
+let cachedOutlineTextarea = null
+let cachedOutlinePreview = null
+
+// ── System Prompts ──────────────────────────────────────────────────────────
+
+// ── Utility Functions ────────────────────────────────────────────────────────
+
+function debounce(fn, delay) {
+  let timer
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), delay)
+  }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/**
+ * Remove markdown code fences from content
+ */
+function cleanMarkdownFences(text) {
+  return text.replace(/```markdown\n?/g, '').replace(/```\n?/g, '')
+}
+
+/**
+ * Debounced outline preview rendering (avoids O(n²) work during streaming)
+ */
+const debouncedRenderOutlinePreview = debounce((markdown) => {
+  renderOutlinePreview(markdown)
+}, 100)
 
 // ── System Prompts ──────────────────────────────────────────────────────────
 
@@ -39,7 +78,16 @@ const SYSTEM_PROMPT_OUTLINE = `你是一个专业的 PPT 策划师。请根据�
 - 页面标题简洁有力
 - 只输出大纲，不要任何解释`
 
-const SYSTEM_PROMPT_FULL = `你是一个专业的 PPT 设计师。请生成一个完整的 HTML PPT 文件。
+const SYSTEM_PROMPT_FULL = `你是一个顶尖的 PPT 视觉设计师。你创作的每一个作品都像是花费无数小时精心打磨，由设计领域最顶尖的大师亲手制作。
+
+## 设计哲学（核心理念）
+
+你的作品不是"幻灯片"，而是视觉艺术品。每一页都应该：
+- 像博物馆级海报一样精致
+- 通过空间、形式、色彩传达信息，而非堆砌文字
+- 展现"专家级工艺"——每个元素的位置、大小、颜色都经过深思熟虑
+
+## 输出格式
 
 严格遵守以下结构规范，每页用 <section data-slide="N" data-title="页面标题"> 包裹：
 
@@ -49,8 +97,8 @@ const SYSTEM_PROMPT_FULL = `你是一个专业的 PPT 设计师。请生成一�
 <style>
   body { margin: 0; padding: 0; }
   section[data-slide] {
-    width: 1280px;
-    height: 720px;
+    width: ${SLIDE_WIDTH}px;
+    height: ${SLIDE_HEIGHT}px;
     position: relative;
     overflow: hidden;
     display: none;
@@ -63,40 +111,61 @@ const SYSTEM_PROMPT_FULL = `你是一个专业的 PPT 设计师。请生成一�
 </body>
 </html>
 
-## 设计规范（严格遵守）
+## 视觉设计规范（严格遵守）
 
-### 配色原则
-- 选择与主题内容高度匹配的配色，绝对不要默认使用通用蓝色
-- 一种主色应占 60-70% 视觉权重，1-2 种辅色，一种强调色
-- 封面和结语页使用深色背景，内容页可使用浅色背景（"三明治"结构）或全程深色
-- 主色、辅色、强调色形成强烈对比
+### 配色哲学
+- 选择与主题内容深度匹配的配色，展现"色彩作为信息系统"的理念
+- 一种主色占 60-70% 视觉权重，1-2 种辅色，一种点睛强调色
+- 封面和结语页使用深色背景，内容页可使用浅色背景形成"三明治"结构
+- 色彩对比必须强烈有力，绝不使用 timid（怯懦）的平均分布配色
 
-### 布局多样性
-- 不同页面使用不同布局，不要重复相同的排版
+### 布局哲学
+- 每页都是独特的构图，绝不重复相同排版
+- 拥抱非对称、对角线流动、网格突破、大胆留白
 - 可用布局：双栏（文字左/图示右）、图标+文字行、2x2或2x3网格卡片、半出血图片+内容叠加
 - 数据展示：大号数字统计（60-72pt 数字+小标签）、对比栏、时间线/流程图
 
 ### 视觉元素
-- 每页必须有视觉元素（色块、几何图形、渐变、图标符号等）
-- 使用 CSS 渐变、几何形状、emoji 图标作为视觉辅助
+- 每页必须有视觉元素作为"锚点"——色块、几何图形、渐变、图标符号
+- 使用 CSS 渐变创造深度和氛围：径向渐变、线性渐变、网格背景
+- 可用技法：噪点纹理（通过 SVG filter）、几何图案、层叠透明度、戏剧性阴影
 - 标题字号 44-52px，正文 16-20px，说明文字 12-14px
 
+### 文字即设计
+- 文字是视觉元素的一部分，不是信息的堆砌
+- 每页文字极简：核心观点 1-3 个，绝不写长段落
+- 列表项用图标或数字替代普通项目符号
+- 大号关键词 > 小号解释文字，形成视觉层次
+
 ### 绝对禁止
-- ❌ 标题下方画横线/装饰线（这是 AI 生成幻灯片的明显特征）
+- ❌ 标题下方画横线/装饰线（这是 AI 生成的明显特征）
 - ❌ 纯文字页面（每页必须有视觉元素）
 - ❌ 正文居中对齐（列表和段落必须左对齐）
-- ❌ 所有页面使用相同布局
-- ❌ 引用任何外部资源（无外链字体、图片用 CSS 渐变代替）
+- ❌ 所有页面使用相同布局（单调是业余的标志）
+- ❌ 引用任何外部资源（无外链字体、图片用 CSS 渐变/几何图形代替）
 - ❌ 低对比度文字（浅色背景上不用浅灰文字）
+- ❌ 使用 Inter、Roboto、Arial 等通用字体描述（因为是 HTML，使用系统字体即可）
+- ❌ 紫色渐变配白底（这是 AI 生成的陈词滥调）
 
 ### 技术要求
-- 每页固定尺寸 1280×720px，position: relative，overflow: hidden
+- 每页固定尺寸 ${SLIDE_WIDTH}×${SLIDE_HEIGHT}px，position: relative，overflow: hidden
 - 使用内联 CSS，style 写在 <head> 或元素上
-- 只输出完整 HTML 代码，不要任何解释文字`
+- 只输出完整 HTML 代码，不要任何解释文字
+- 所有视觉效果用纯 CSS 实现：渐变、阴影、圆角、变换
+
+## 大师级工艺检查
+
+生成前自问：
+1. 这看起来像是花了无数小时打磨的作品吗？
+2. 每个元素的位置都是有意为之吗？
+3. 色彩搭配会让人印象深刻吗？
+4. 布局够大胆、够独特吗？
+
+只���能回答"是"时，才输出最终作品。`
 
 const SYSTEM_PROMPT_MODIFY = `你是一个专业的前端开发者，擅长修改 HTML PPT 幻灯片。
 用户会给你一段幻灯片的 HTML 代码，以及修改指令。
-请按指令修改 HTML，保持外层结构不变，宽度保持 1280px，高度保持 720px。
+请按指令修改 HTML，保持外层结构不变，宽度保持 ${SLIDE_WIDTH}px，高度保持 ${SLIDE_HEIGHT}px。
 只输出修改后的完整 HTML 代码，不要任何解释。`
 
 // ── Init ────────────────────────────────────────────────────────────────────
@@ -240,6 +309,9 @@ function clearIntentHint(tab) {
 // ── Generate Outline ─────────────────────────────────────────────────────────
 
 async function handleGenerateOutline() {
+  // Guard against overlapping requests
+  if (generationPhase !== 'idle') return
+
   const config = await window.electronAPI.getConfig()
   if (!config.apiKey) {
     alert('请先在设置中配置 API Key')
@@ -272,7 +344,12 @@ async function handleGenerateOutline() {
 
   // Clear outline and show section for streaming
   currentOutline = ''
-  document.getElementById('ai-outline').value = ''
+
+  // Cache DOM elements for streaming callback
+  cachedOutlineTextarea = document.getElementById('ai-outline')
+  cachedOutlinePreview = document.getElementById('outline-preview')
+  cachedOutlineTextarea.value = ''
+
   document.getElementById('outline-section').style.display = 'block'
   document.getElementById('ai-outline-btn').style.display = 'none'
   setOutlineEditMode(false)
@@ -281,14 +358,15 @@ async function handleGenerateOutline() {
     const outline = await streamCompletion(config, SYSTEM_PROMPT_OUTLINE, userPrompt, (chunk, total) => {
       // Real-time update outline
       currentOutline += chunk
-      const cleanOutline = currentOutline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '')
-      document.getElementById('ai-outline').value = cleanOutline
-      renderOutlinePreview(cleanOutline)
+      const cleanOutline = cleanMarkdownFences(currentOutline)
+      cachedOutlineTextarea.value = cleanOutline
+      // Use debounced preview to avoid O(n²) work
+      debouncedRenderOutlinePreview(cleanOutline)
       showProgress(`正在生成大纲... ${total} 字符`)
     }, 128000)
 
-    currentOutline = outline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '').trim()
-    document.getElementById('ai-outline').value = currentOutline
+    currentOutline = cleanMarkdownFences(outline).trim()
+    cachedOutlineTextarea.value = currentOutline
     renderOutlinePreview(currentOutline)
 
     // Show outline section in preview mode
@@ -309,12 +387,18 @@ async function handleGenerateOutline() {
   } finally {
     generationPhase = 'idle'
     setGenerating(false)
+    // Clear cached elements
+    cachedOutlineTextarea = null
+    cachedOutlinePreview = null
   }
 }
 
 // ── Generate PPT ─────────────────────────────────────────────────────────────
 
 async function handleGenerate() {
+  // Guard against overlapping requests
+  if (generationPhase !== 'idle') return
+
   // Get outline from textarea (user may have edited it)
   const outline = document.getElementById('ai-outline')?.value?.trim()
   if (!outline) {
@@ -322,16 +406,15 @@ async function handleGenerate() {
     return
   }
 
-  generationPhase = 'ppt'
-  setGenerating(true)
-
   const config = await window.electronAPI.getConfig()
   if (!config.apiKey) {
-    setGenerating(false)
     alert('请先在设置中配置 API Key')
     openSettings()
     return
   }
+
+  generationPhase = 'ppt'
+  setGenerating(true)
 
   const topic = document.getElementById('ai-topic').value.trim()
   const pages = Math.max(3, Math.min(30, parseInt(document.getElementById('ai-pages').value) || 8))
@@ -358,9 +441,11 @@ async function handleGenerate() {
 
   // Build prompt with outline, memory and style
   const memoryContent = await getSelectedMemoryContent()
-  const styleId = document.getElementById('style-template-select')?.value || ''
+  const styleId = selectedStyleId
   const styleParams = getStyleParams()
-  const userPrompt = buildGeneratePromptWithOutline(topic, pages, lang, outline, memoryContent, styleId, styleParams)
+  // Include extracted style description if available
+  const extractedStyle = window._extractedStyleDesc || ''
+  const userPrompt = buildGeneratePromptWithOutline(topic, pages, lang, outline, memoryContent, styleId, styleParams, extractedStyle)
   const systemPrompt = buildSystemPromptWithStyle(styleId)
 
   const maxTokens = 128000
@@ -551,7 +636,7 @@ function extractSlideText(html) {
 
 // ── Prompt Builders ─────────────────────────────────────────────────────────
 
-function buildGeneratePromptWithOutline(topic, pages, lang, outline, memoryContent, styleId, styleParams) {
+function buildGeneratePromptWithOutline(topic, pages, lang, outline, memoryContent, styleId, styleParams, extractedStyle = '') {
   let prompt = `请严格按照以下大纲结构生成 PPT，主题「${topic}」，共 ${pages} 页。
 
 ## 大纲结构（必须严格遵循）
@@ -572,6 +657,9 @@ ${outline}
   if (styleId) {
     const styleHint = buildStylePrompt(styleId, styleParams)
     if (styleHint) prompt += styleHint
+  } else if (extractedStyle) {
+    // Use extracted style if no template selected
+    prompt += `\n\n## 风格指令（从图片提取）\n\n${extractedStyle}\n\n请完全按照这个风格设计每一页。`
   }
 
   // Append memory content as background knowledge
@@ -611,10 +699,25 @@ function buildSystemPromptWithStyle(styleId) {
   const template = getTemplateById(styleId)
   if (!template) return SYSTEM_PROMPT_FULL
 
-  return SYSTEM_PROMPT_FULL + `\n\n风格配色参考（请严格遵守）：
-主色 ${template.colors.primary}，辅色 ${template.colors.secondary}，强调色 ${template.colors.accent}
-背景色 ${template.colors.background}，主文字色 ${template.colors.text}，次要文字色 ${template.colors.textMuted}
-标题字重：${template.fonts.title}，正文字重：${template.fonts.body}`
+  return SYSTEM_PROMPT_FULL + `
+
+## 选定风格：${template.emoji} ${template.name}
+
+**设计哲学**: ${template.designPhilosophy}
+
+**调色板要求**（必须严格使用这些颜色）:
+- 主色: ${template.colors.primary}
+- 辅色: ${template.colors.secondary}
+- 强调色: ${template.colors.accent}
+- 背景色: ${template.colors.background}
+- 主文字色: ${template.colors.text}
+- 次要文字色: ${template.colors.textMuted}
+
+**字体**: 标题 font-weight: ${template.fonts.title === 'bold' ? '700' : '400'}, 正文 font-weight: ${template.fonts.body === 'bold' ? '700' : template.fonts.body === 'light' ? '300' : '400'}
+
+**布局风格**: ${template.layout}
+
+请完全按照这个风格设计每一页，让整个 PPT 风格统一、专业、令人印象深刻。`
 }
 
 function buildModifyPrompt(slideHtml, instruction, contextInfo, memoryContent) {
@@ -762,21 +865,285 @@ async function getSelectedMemoryContent() {
 
 // ── Style Panel ─────────────────────────────────────────────────────────────
 
+let selectedStyleId = ''
+let stylePreviewPopup = null
+let hidePopupTimeout = null
+
 function initStylePanel() {
-  const selectEl = document.getElementById('style-template-select')
-  if (!selectEl) return
+  const capsulesContainer = document.getElementById('style-capsules')
+  if (!capsulesContainer) return
 
-  // Render template options
-  selectEl.innerHTML = '<option value="">无（自定义描述）</option>' +
-    STYLE_TEMPLATES.map(t =>
-      `<option value="${t.id}">${t.emoji} ${t.name} — ${t.description}</option>`
-    ).join('')
+  // Render capsule buttons
+  renderStyleCapsules(capsulesContainer)
 
-  selectEl.addEventListener('change', updateStylePreview)
+  // Create popup element and attach to body for correct positioning
+  createStylePreviewPopup()
+  setupStyleCapsuleHover()
+
+  // Setup sliders
   document.getElementById('style-color-temp').addEventListener('input', updateStylePreview)
   document.getElementById('style-contrast').addEventListener('input', updateStylePreview)
   document.getElementById('style-density').addEventListener('input', updateStylePreview)
   document.getElementById('style-save-btn').addEventListener('click', saveStyleConfig)
+
+  // Setup image extraction
+  const extractBtn = document.getElementById('style-extract-btn')
+  const imageInput = document.getElementById('style-image-input')
+  if (extractBtn && imageInput) {
+    extractBtn.addEventListener('click', () => imageInput.click())
+    imageInput.addEventListener('change', handleStyleImageExtract)
+  }
+}
+
+function createStylePreviewPopup() {
+  // Remove existing popup if any
+  const existing = document.getElementById('style-preview-popup-dynamic')
+  if (existing) existing.remove()
+
+  // Create popup and attach to body
+  const popup = document.createElement('div')
+  popup.id = 'style-preview-popup-dynamic'
+  popup.className = 'style-preview-popup'
+  popup.innerHTML = `
+    <div class="style-preview-popup-image" id="style-popup-image"></div>
+    <div class="style-preview-popup-content">
+      <div class="style-preview-popup-title" id="style-popup-title"></div>
+      <div class="style-preview-popup-desc" id="style-popup-desc"></div>
+      <div class="style-preview-popup-colors" id="style-popup-colors"></div>
+    </div>
+  `
+  document.body.appendChild(popup)
+  stylePreviewPopup = popup
+}
+
+function renderStyleCapsules(container) {
+  // "None" capsule
+  let html = `<button class="style-capsule style-capsule-none ${!selectedStyleId ? 'selected' : ''}"
+    data-style-id="">✨ 自定义</button>`
+
+  // Template capsules
+  html += STYLE_TEMPLATES.map(t => `
+    <button class="style-capsule ${selectedStyleId === t.id ? 'selected' : ''}"
+      data-style-id="${t.id}">
+      <span class="style-dot" style="background:${t.color}"></span>
+      ${t.emoji} ${t.name}
+    </button>
+  `).join('')
+
+  container.innerHTML = html
+
+  // Add click handlers
+  container.querySelectorAll('.style-capsule').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedStyleId = btn.dataset.styleId || ''
+      // Update selection visual
+      container.querySelectorAll('.style-capsule').forEach(b => b.classList.remove('selected'))
+      btn.classList.add('selected')
+      updateStylePreview()
+    })
+  })
+}
+
+function setupStyleCapsuleHover() {
+  const container = document.getElementById('style-capsules')
+  if (!container || !stylePreviewPopup) return
+
+  container.addEventListener('mouseover', (e) => {
+    const capsule = e.target.closest('.style-capsule')
+    if (!capsule) return
+
+    const styleId = capsule.dataset.styleId
+    if (!styleId) {
+      hideStylePreviewPopup()
+      return
+    }
+
+    clearTimeout(hidePopupTimeout)
+    showStylePreviewPopup(styleId, capsule)
+  })
+
+  container.addEventListener('mouseleave', () => {
+    hidePopupTimeout = setTimeout(hideStylePreviewPopup, 100)
+  })
+}
+
+function showStylePreviewPopup(styleId, capsule) {
+  const template = getTemplateById(styleId)
+  if (!template || !stylePreviewPopup) return
+
+  // Update popup content
+  const imageEl = document.getElementById('style-popup-image')
+  const titleEl = document.getElementById('style-popup-title')
+  const descEl = document.getElementById('style-popup-desc')
+  const colorsEl = document.getElementById('style-popup-colors')
+
+  if (!imageEl || !titleEl || !descEl || !colorsEl) return
+
+  // Render CSS-based preview (mini slide preview) - escape text content
+  const safeName = escapeHtml(template.name)
+  const safeDesc = escapeHtml(template.description)
+  imageEl.innerHTML = `
+    <div style="width:100%;height:100%;padding:12px;background:${template.colors.background};display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:16px;font-weight:bold;color:${template.colors.text};margin-bottom:6px;">${safeName}</div>
+      <div style="font-size:10px;color:${template.colors.textMuted};margin-bottom:8px;">${safeDesc}</div>
+      <div style="display:flex;gap:4px;">
+        <div style="width:40px;height:4px;background:${template.colors.primary};border-radius:2px;"></div>
+        <div style="width:20px;height:4px;background:${template.colors.accent};border-radius:2px;"></div>
+      </div>
+    </div>
+  `
+  imageEl.className = 'style-preview-popup-image'
+
+  titleEl.innerHTML = `<span style="color:${template.color}">${template.emoji}</span> ${safeName}`
+  descEl.textContent = template.designPhilosophy  // textContent is safe
+
+  // Render color swatches
+  const colors = [
+    template.colors.primary,
+    template.colors.secondary,
+    template.colors.accent,
+    template.colors.background
+  ]
+  colorsEl.innerHTML = colors.map(c =>
+    `<div class="style-preview-popup-color" style="background:${escapeHtml(c)}"></div>`
+  ).join('')
+
+  // Make popup visible first to get actual dimensions
+  stylePreviewPopup.style.visibility = 'hidden'
+  stylePreviewPopup.classList.add('visible')
+
+  // Get actual popup dimensions
+  const popupRect = stylePreviewPopup.getBoundingClientRect()
+  const popupWidth = popupRect.width || 260
+  const popupHeight = popupRect.height || 220
+
+  // Position popup above the capsule
+  const rect = capsule.getBoundingClientRect()
+
+  let left = rect.left + (rect.width / 2) - (popupWidth / 2)
+  let top = rect.top - popupHeight - 8
+
+  // Keep within viewport
+  if (left < 10) left = 10
+  if (left + popupWidth > window.innerWidth - 10) {
+    left = window.innerWidth - popupWidth - 10
+  }
+  if (top < 10) {
+    // Show below if no space above
+    top = rect.bottom + 8
+  }
+
+  stylePreviewPopup.style.left = `${left}px`
+  stylePreviewPopup.style.top = `${top}px`
+  stylePreviewPopup.style.visibility = 'visible'
+}
+
+function hideStylePreviewPopup() {
+  if (stylePreviewPopup) {
+    stylePreviewPopup.classList.remove('visible')
+    stylePreviewPopup.style.visibility = 'hidden'
+  }
+}
+
+async function handleStyleImageExtract(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+
+  const extractBtn = document.getElementById('style-extract-btn')
+  const originalText = extractBtn.textContent
+  extractBtn.textContent = '🔄 提取中...'
+  extractBtn.disabled = true
+
+  try {
+    // Read image as base64
+    const base64 = await readFileAsBase64(file)
+    const mimeType = file.type || 'image/png'
+
+    // Call AI API to extract style
+    const config = await window.electronAPI.getConfig()
+    if (!config.apiKey) {
+      throw new Error('请先在设置中配置 API Key')
+    }
+
+    const response = await fetch(`${config.baseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model || 'gpt-4o',
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64}` }
+            },
+            {
+              type: 'text',
+              text: `分析这张 PPT/演示文稿截图的视觉风格，提取以下信息：
+1. 配色方案（主色、辅色、强调色、背景色、文字色，hex格式）
+2. 布局风格（极简/现代/商务/创意/学术等）
+3. 字体风格建议（粗细、大小）
+4. 视觉特征（渐变/阴影/圆角/几何图形等）
+
+以简洁的风格描述文本输出，不要 JSON 格式。示例：
+"深色科技风格：纯黑背景(#0A0A0F)，霓虹蓝主色(#0066FF)配青色辅色(#00FFFF)，橙色强调。标题粗体大字号，高对比度。使用发光边框和网格线背景。"`
+            }
+          ]
+        }],
+        max_tokens: 500
+      })
+    })
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}))
+      throw new Error(errData.error?.message || `API 请求失败: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const styleDesc = data.choices?.[0]?.message?.content || ''
+
+    if (styleDesc) {
+      // Clear selected template and show extracted style
+      selectedStyleId = ''
+      renderStyleCapsules(document.getElementById('style-capsules'))
+
+      // Show the extracted style description in the preview area
+      const previewEl = document.getElementById('style-preview')
+      if (previewEl) {
+        previewEl.innerHTML = `
+          <div class="style-preview-card" style="background:var(--bg-surface);border:1px solid var(--accent);padding:12px;">
+            <div style="font-size:12px;color:var(--accent);margin-bottom:6px;">🖼️ 提取的风格</div>
+            <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">${escapeHtml(styleDesc)}</div>
+          </div>
+        `
+      }
+
+      // Store extracted style for later use
+      window._extractedStyleDesc = styleDesc
+    }
+  } catch (err) {
+    console.error('Style extraction failed:', err)
+    alert('风格提取失败: ' + err.message)
+  } finally {
+    extractBtn.textContent = originalText
+    extractBtn.disabled = false
+    e.target.value = ''
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1]
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 function applyConfigToForms(config) {
@@ -786,9 +1153,12 @@ function applyConfigToForms(config) {
   document.getElementById('settings-model').value = config.model || 'gpt-4o'
 
   // Style form
-  const selectEl = document.getElementById('style-template-select')
-  if (selectEl && config.styleConfig) {
-    if (config.styleConfig.templateId) selectEl.value = config.styleConfig.templateId
+  if (config.styleConfig) {
+    if (config.styleConfig.templateId) {
+      selectedStyleId = config.styleConfig.templateId
+      const container = document.getElementById('style-capsules')
+      if (container) renderStyleCapsules(container)
+    }
     if (config.styleConfig.colorTemp !== undefined) {
       document.getElementById('style-color-temp').value = config.styleConfig.colorTemp
     }
@@ -811,9 +1181,14 @@ function getStyleParams() {
 }
 
 function updateStylePreview() {
-  const templateId = document.getElementById('style-template-select')?.value
+  const templateId = selectedStyleId
   const previewEl = document.getElementById('style-preview')
   if (!previewEl) return
+
+  // Don't override if we have an extracted style
+  if (window._extractedStyleDesc && !templateId) {
+    return
+  }
 
   const template = getTemplateById(templateId)
   if (!template) {
@@ -842,10 +1217,15 @@ function updateStylePreview() {
       色温 ${params.colorTemp}% · 对比度 ${params.contrast}% · 密度 ${params.density}%
     </div>
   `
+
+  // Clear extracted style when a template is selected
+  if (templateId) {
+    window._extractedStyleDesc = null
+  }
 }
 
 async function saveStyleConfig() {
-  const templateId = document.getElementById('style-template-select')?.value || ''
+  const templateId = selectedStyleId
   const params = getStyleParams()
   await window.electronAPI.setConfig({
     styleConfig: { templateId, ...params }
@@ -1013,7 +1393,7 @@ function extractHTML(raw) {
 
 /**
  * Post-process generated HTML to fix common issues:
- * - Ensure all slides have correct 1280x720 dimensions
+ * - Ensure all slides have correct dimensions
  * - Fix missing position/overflow styles
  * - Add missing data-slide attributes
  */
@@ -1053,14 +1433,14 @@ function validateAndFixSlides(html) {
   // Add/ensure base slide styles
   const baseStyles = `
 section[data-slide] {
-  width: 1280px !important;
-  height: 720px !important;
+  width: ${SLIDE_WIDTH}px !important;
+  height: ${SLIDE_HEIGHT}px !important;
   position: relative !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
 }
 `
-  if (!styleTag.textContent.includes('1280px')) {
+  if (!styleTag.textContent.includes(`${SLIDE_WIDTH}px`)) {
     styleTag.textContent = baseStyles + styleTag.textContent
   }
 
@@ -1071,8 +1451,8 @@ section[data-slide] {
 function fixSlideStyles(element) {
   // Ensure critical inline styles
   const style = element.style
-  style.width = '1280px'
-  style.height = '720px'
+  style.width = `${SLIDE_WIDTH}px`
+  style.height = `${SLIDE_HEIGHT}px`
   style.position = 'relative'
   style.overflow = 'hidden'
   style.boxSizing = 'border-box'
@@ -1088,18 +1468,6 @@ function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
-function debounce(fn, delay) {
-  let timer
-  return (...args) => {
-    clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), delay)
-  }
 }
 
 // ── Panel HTML ───────────────────────────────────────────────────────────────
@@ -1188,8 +1556,12 @@ function renderAIPanel() {
     <div id="ai-style-form" class="ai-section" style="display:none;flex-direction:column;gap:12px;">
       <div class="form-group">
         <label class="form-label">风格模板</label>
-        <select class="form-select" id="style-template-select"></select>
+        <div class="style-capsules" id="style-capsules"></div>
       </div>
+      <button class="style-extract-btn" id="style-extract-btn">
+        🖼️ 从图片提取风格
+      </button>
+      <input type="file" id="style-image-input" accept="image/*" hidden>
       <div id="style-preview"></div>
       <div class="form-group">
         <label class="form-label">色温 <span id="style-color-temp-val"></span></label>
