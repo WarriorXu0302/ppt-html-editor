@@ -20,8 +20,8 @@
 
 ```bash
 # 克隆项目
-git clone <repo-url>
-cd ppt-editor
+git clone https://github.com/WarriorXu0302/ppt-html-editor.git
+cd ppt-html-editor
 
 # 安装依赖
 npm install
