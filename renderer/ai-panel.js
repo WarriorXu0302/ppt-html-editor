@@ -500,7 +500,7 @@ function renderMemoryList() {
   if (!listEl) return
 
   if (memoryFiles.length === 0) {
-    listEl.innerHTML = '<div class="memory-empty">暂无 Memory 文件<br>上传文档作为 AI 的背景知识</div>'
+    listEl.innerHTML = '<div class="memory-empty">暂无附件<br>上传文档作为 AI 的背景知识</div>'
     updateMemoryBadge()
     return
   }
@@ -830,7 +830,7 @@ function renderAIPanel() {
     <div class="ai-tabs">
       <button class="ai-tab active" id="ai-tab-generate">生成</button>
       <button class="ai-tab" id="ai-tab-modify">修改</button>
-      <button class="ai-tab" id="ai-tab-memory">Memory <span class="memory-badge" id="memory-badge" style="display:none"></span></button>
+      <button class="ai-tab" id="ai-tab-memory">附件 <span class="memory-badge" id="memory-badge" style="display:none"></span></button>
       <button class="ai-tab" id="ai-tab-style">风格</button>
     </div>
 
