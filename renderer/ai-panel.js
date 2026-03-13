@@ -285,7 +285,7 @@ async function handleGenerateOutline() {
       document.getElementById('ai-outline').value = cleanOutline
       renderOutlinePreview(cleanOutline)
       showProgress(`正在生成大纲... ${total} 字符`)
-    }, 8000)
+    }, 16000)
 
     currentOutline = outline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '').trim()
     document.getElementById('ai-outline').value = currentOutline
@@ -372,7 +372,8 @@ async function handleGenerate() {
       showProgress(`正在生成... ${total} 字符`, chunk.slice(-200))
     }, maxTokens)
 
-    const clean = extractHTML(html)
+    const raw = extractHTML(html)
+    const clean = validateAndFixSlides(raw)
     if (onNewPPT) onNewPPT(clean)
     showProgress('✓ 生成完成！', '')
 
@@ -1008,6 +1009,73 @@ function extractHTML(raw) {
   }
   if (startIdx !== -1) return raw.slice(startIdx)
   return raw.trim()
+}
+
+/**
+ * Post-process generated HTML to fix common issues:
+ * - Ensure all slides have correct 1280x720 dimensions
+ * - Fix missing position/overflow styles
+ * - Add missing data-slide attributes
+ */
+function validateAndFixSlides(html) {
+  // Parse HTML
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+
+  // Find all slide sections
+  const slides = doc.querySelectorAll('section[data-slide], section.slide, .slide, [class*="slide"]')
+
+  if (slides.length === 0) {
+    // Try to find any section elements
+    const sections = doc.querySelectorAll('section')
+    sections.forEach((section, i) => {
+      if (!section.hasAttribute('data-slide')) {
+        section.setAttribute('data-slide', String(i + 1))
+      }
+      fixSlideStyles(section)
+    })
+  } else {
+    slides.forEach((slide, i) => {
+      if (!slide.hasAttribute('data-slide')) {
+        slide.setAttribute('data-slide', String(i + 1))
+      }
+      fixSlideStyles(slide)
+    })
+  }
+
+  // Ensure global styles exist
+  let styleTag = doc.querySelector('style')
+  if (!styleTag) {
+    styleTag = doc.createElement('style')
+    doc.head.appendChild(styleTag)
+  }
+
+  // Add/ensure base slide styles
+  const baseStyles = `
+section[data-slide] {
+  width: 1280px !important;
+  height: 720px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+`
+  if (!styleTag.textContent.includes('1280px')) {
+    styleTag.textContent = baseStyles + styleTag.textContent
+  }
+
+  // Serialize back to HTML
+  return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML
+}
+
+function fixSlideStyles(element) {
+  // Ensure critical inline styles
+  const style = element.style
+  style.width = '1280px'
+  style.height = '720px'
+  style.position = 'relative'
+  style.overflow = 'hidden'
+  style.boxSizing = 'border-box'
 }
 
 function getFileIcon(type) {
