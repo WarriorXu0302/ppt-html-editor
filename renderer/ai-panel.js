@@ -118,6 +118,12 @@ export async function initAIPanel({ onGenerate, onModify, getAppState }) {
   // Generate Outline
   document.getElementById('ai-outline-btn').addEventListener('click', handleGenerateOutline)
   document.getElementById('ai-regenerate-outline-btn').addEventListener('click', handleGenerateOutline)
+  document.getElementById('outline-edit-toggle').addEventListener('click', toggleOutlineEditMode)
+
+  // Sync textarea changes to preview when exiting edit mode
+  document.getElementById('ai-outline').addEventListener('blur', () => {
+    renderOutlinePreview(document.getElementById('ai-outline').value)
+  })
 
   // Generate PPT (from outline)
   document.getElementById('ai-generate-btn').addEventListener('click', handleGenerate)
@@ -264,27 +270,31 @@ async function handleGenerateOutline() {
 
   showProgress('正在生成大纲...')
 
-  // Clear outline for new generation
+  // Clear outline and show section for streaming
   currentOutline = ''
   document.getElementById('ai-outline').value = ''
+  document.getElementById('outline-section').style.display = 'block'
+  document.getElementById('ai-outline-btn').style.display = 'none'
+  setOutlineEditMode(false)
 
   try {
     const outline = await streamCompletion(config, SYSTEM_PROMPT_OUTLINE, userPrompt, (chunk, total) => {
-      // Real-time update outline textarea
+      // Real-time update outline
       currentOutline += chunk
-      const textarea = document.getElementById('ai-outline')
-      if (textarea) {
-        textarea.value = currentOutline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '')
-      }
+      const cleanOutline = currentOutline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '')
+      document.getElementById('ai-outline').value = cleanOutline
+      renderOutlinePreview(cleanOutline)
       showProgress(`正在生成大纲... ${total} 字符`)
     }, 8000)
 
     currentOutline = outline.replace(/```markdown\n?/g, '').replace(/```\n?/g, '').trim()
     document.getElementById('ai-outline').value = currentOutline
+    renderOutlinePreview(currentOutline)
 
-    // Show outline section
+    // Show outline section in preview mode
     document.getElementById('outline-section').style.display = 'block'
     document.getElementById('ai-outline-btn').style.display = 'none'
+    setOutlineEditMode(false)
 
     showProgress('✓ 大纲生成完成！请确认后生成 PPT')
     setTimeout(() => hideProgress(), 2000)
@@ -387,8 +397,62 @@ async function handleGenerate() {
 function resetOutlineState() {
   currentOutline = ''
   document.getElementById('ai-outline').value = ''
+  document.getElementById('outline-preview').innerHTML = ''
   document.getElementById('outline-section').style.display = 'none'
   document.getElementById('ai-outline-btn').style.display = 'block'
+  // Reset to preview mode
+  setOutlineEditMode(false)
+}
+
+function toggleOutlineEditMode() {
+  const textarea = document.getElementById('ai-outline')
+  const preview = document.getElementById('outline-preview')
+  const isEditing = textarea.style.display !== 'none'
+  setOutlineEditMode(!isEditing)
+}
+
+function setOutlineEditMode(editing) {
+  const textarea = document.getElementById('ai-outline')
+  const preview = document.getElementById('outline-preview')
+  const toggleBtn = document.getElementById('outline-edit-toggle')
+
+  if (editing) {
+    textarea.style.display = 'block'
+    preview.style.display = 'none'
+    toggleBtn.textContent = '👁️ 预览'
+    textarea.focus()
+  } else {
+    textarea.style.display = 'none'
+    preview.style.display = 'block'
+    toggleBtn.textContent = '✏️ 编辑'
+    renderOutlinePreview(textarea.value)
+  }
+}
+
+function renderOutlinePreview(markdown) {
+  const preview = document.getElementById('outline-preview')
+  if (!preview || !markdown) {
+    if (preview) preview.innerHTML = '<div class="outline-empty">暂无大纲</div>'
+    return
+  }
+
+  // Simple markdown to HTML conversion
+  let html = escapeHtml(markdown)
+    // Headers
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    // List items
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Line breaks
+    .replace(/\n/g, '')
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>')
+
+  preview.innerHTML = html
 }
 
 // ── Modify ──────────────────────────────────────────────────────────────────
@@ -1008,12 +1072,16 @@ function renderAIPanel() {
       </div>
 
       <!-- Step 1: Generate Outline -->
-      <button id="ai-outline-btn">📝 生成大纲</button>
+      <button id="ai-outline-btn" class="btn-outline-generate">📝 生成大纲</button>
 
       <!-- Outline Section (hidden until outline is generated) -->
       <div id="outline-section" class="outline-section" style="display:none;">
-        <label class="form-label">大纲预览（可编辑）</label>
-        <textarea class="form-textarea outline-textarea" id="ai-outline" rows="10" placeholder="大纲将在此显示..."></textarea>
+        <div class="outline-header">
+          <label class="form-label">大纲预览</label>
+          <button id="outline-edit-toggle" class="btn-text">✏️ 编辑</button>
+        </div>
+        <div id="outline-preview" class="outline-preview"></div>
+        <textarea class="form-textarea outline-textarea" id="ai-outline" rows="10" style="display:none;" placeholder="大纲将在此显示..."></textarea>
         <div class="outline-actions">
           <button id="ai-regenerate-outline-btn" class="btn-secondary">🔄 重新生成</button>
           <button id="ai-generate-btn">✨ 确认并生成 PPT</button>
