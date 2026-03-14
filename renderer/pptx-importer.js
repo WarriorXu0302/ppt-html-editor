@@ -31,19 +31,27 @@ export async function importPPTX(byteArray) {
   const slideOrder = await parseSlideOrder(zip)
   if (!slideOrder.length) throw new Error('未找到幻灯片内容')
 
-  const slides = []
-  for (const slideName of slideOrder) {
-    const slideXml = await zip.file(`ppt/slides/${slideName}.xml`)?.async('text')
-    if (!slideXml) continue
+  // Cache slide layouts by path — most presentations reuse the same 1-2 layouts
+  const layoutCache = new Map()
 
-    const slideRelsXml = await zip.file(`ppt/slides/_rels/${slideName}.xml.rels`)?.async('text')
-    const slideLayoutXml = await resolveSlideLayout(zip, slideRelsXml)
+  const results = await Promise.all(slideOrder.map(async (slideName, i) => {
+    const [slideXml, slideRelsXml] = await Promise.all([
+      zip.file(`ppt/slides/${slideName}.xml`)?.async('text'),
+      zip.file(`ppt/slides/_rels/${slideName}.xml.rels`)?.async('text')
+    ])
+    if (!slideXml) return null
 
-    const { html, title, notes } = await convertSlideToHtml(slideXml, slideRelsXml, slideLayoutXml, zip)
-    slides.push({ content: html, rawHtml: html, title: title || `幻灯片 ${slides.length + 1}`, notes })
-  }
+    // Parse rels once; pass parsed doc to both resolveSlideLayout and convertSlideToHtml
+    const relsDoc = slideRelsXml
+      ? new DOMParser().parseFromString(slideRelsXml, 'application/xml')
+      : null
+    const slideLayoutXml = await resolveSlideLayout(zip, relsDoc, layoutCache)
 
-  return slides
+    const { html, title, notes } = await convertSlideToHtml(slideXml, relsDoc, slideLayoutXml, zip)
+    return { content: html, rawHtml: html, title: title || `幻灯片 ${i + 1}`, notes }
+  }))
+
+  return results.filter(Boolean)
 }
 
 // ── Slide Order ──────────────────────────────────────────────────────────
@@ -54,7 +62,7 @@ async function parseSlideOrder(zip) {
 
   const doc = new DOMParser().parseFromString(relsXml, 'application/xml')
   const rels = Array.from(doc.querySelectorAll('Relationship'))
-    .filter(r => r.getAttribute('Type')?.includes('/slide"'))
+    .filter(r => r.getAttribute('Type')?.endsWith('/slide'))
     .sort((a, b) => {
       // Sort by numeric id to preserve order
       const idA = parseInt(a.getAttribute('Id')?.replace(/\D/g, '') || '0')
@@ -71,22 +79,24 @@ async function parseSlideOrder(zip) {
 
 // ── Slide Layout ─────────────────────────────────────────────────────────
 
-async function resolveSlideLayout(zip, slideRelsXml) {
-  if (!slideRelsXml) return null
-  const doc = new DOMParser().parseFromString(slideRelsXml, 'application/xml')
-  const layoutRel = Array.from(doc.querySelectorAll('Relationship'))
-    .find(r => r.getAttribute('Type')?.includes('/slideLayout'))
+async function resolveSlideLayout(zip, relsDoc, layoutCache) {
+  if (!relsDoc) return null
+  const layoutRel = Array.from(relsDoc.querySelectorAll('Relationship'))
+    .find(r => r.getAttribute('Type')?.endsWith('/slideLayout'))
   if (!layoutRel) return null
 
   const target = layoutRel.getAttribute('Target') || ''
   // Target is relative to ppt/slides/, so we need ppt/slideLayouts/...
   const layoutPath = 'ppt/' + target.replace(/^\.\.\//, '')
-  return await zip.file(layoutPath)?.async('text') || null
+  if (layoutCache.has(layoutPath)) return layoutCache.get(layoutPath)
+  const xml = await zip.file(layoutPath)?.async('text') || null
+  layoutCache.set(layoutPath, xml)
+  return xml
 }
 
 // ── Main Converter ────────────────────────────────────────────────────────
 
-async function convertSlideToHtml(slideXml, slideRelsXml, slideLayoutXml, zip) {
+async function convertSlideToHtml(slideXml, relsDoc, slideLayoutXml, zip) {
   const doc = new DOMParser().parseFromString(slideXml, 'application/xml')
   const layoutDoc = slideLayoutXml
     ? new DOMParser().parseFromString(slideLayoutXml, 'application/xml')
@@ -99,7 +109,7 @@ async function convertSlideToHtml(slideXml, slideRelsXml, slideLayoutXml, zip) {
   const textBoxes = extractTextBoxes(doc)
 
   // Extract images
-  const images = await extractImages(doc, slideRelsXml, zip)
+  const images = await extractImages(doc, relsDoc, zip)
 
   // Extract notes
   const notes = extractNotes(doc)
@@ -183,11 +193,10 @@ function extractTextBoxes(doc) {
 
 // ── Images ────────────────────────────────────────────────────────────────
 
-async function extractImages(doc, slideRelsXml, zip) {
+async function extractImages(doc, relsDoc, zip) {
   const images = []
-  if (!slideRelsXml) return images
+  if (!relsDoc) return images
 
-  const relsDoc = new DOMParser().parseFromString(slideRelsXml, 'application/xml')
   const relMap = {}
   for (const r of relsDoc.querySelectorAll('Relationship')) {
     relMap[r.getAttribute('Id')] = r.getAttribute('Target')
@@ -230,18 +239,9 @@ async function extractImages(doc, slideRelsXml, zip) {
 
 // ── Notes ─────────────────────────────────────────────────────────────────
 
-function extractNotes(doc) {
-  // Notes live in ppt/notesSlides/ (separate file), not in the slide XML.
-  // Check if the parsed doc happens to contain a notes element (rare but possible).
-  try {
-    const notesSp = Array.from(doc.querySelectorAll('sp')).find(sp =>
-      sp.querySelector('ph')?.getAttribute('type') === 'body' &&
-      sp.closest('notes')
-    )
-    if (notesSp) {
-      return Array.from(notesSp.querySelectorAll('t')).map(t => t.textContent).join(' ').trim()
-    }
-  } catch {}
+function extractNotes(_doc) {
+  // PPTX speaker notes live in ppt/notesSlides/ (separate files), not in slide XML.
+  // Extraction from notes slide files is not yet implemented.
   return ''
 }
 
