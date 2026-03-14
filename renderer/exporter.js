@@ -549,11 +549,11 @@ function extractTextElements(iframeDoc, warnings = null) {
 
     const baseFontSizePt = Math.round(parseFloat(style.fontSize) * 72 / 96)
     const fontWeight = parseInt(style.fontWeight)
-    const fontFaceForMeasure = extractFontFamily(style.fontFamily)
+    const fontFace = extractFontFamily(style.fontFamily)
 
     const widthPt = (rect.width / 96) * 72
     const heightPt = (rect.height / 96) * 72
-    const optimizedFontSize = calculateFontSize(widthPt, heightPt, text, baseFontSizePt, fontFaceForMeasure)
+    const optimizedFontSize = calculateFontSize(widthPt, heightPt, text, baseFontSizePt, fontFace)
 
     if (warnings && optimizedFontSize < baseFontSizePt * 0.7) {
       warnings.addTextScaled(text, baseFontSizePt, optimizedFontSize)
@@ -573,7 +573,7 @@ function extractTextElements(iframeDoc, warnings = null) {
       underline: style.textDecoration.includes('underline'),
       color: rgbToHex(style.color) || '333333',
       align: mapAlign(style.textAlign),
-      fontFace: extractFontFamily(style.fontFamily),
+      fontFace,
     })
     addedTexts.add(text)
   }
@@ -593,6 +593,8 @@ function calculateFontSize(widthPt, heightPt, text, baseFontSize, fontFamily = '
 
   const ctx = _getMeasureCanvas().getContext('2d')
   const toPx = pt => pt * 96 / 72
+  const widthPx = toPx(widthPt)
+  const heightPx = toPx(heightPt)
 
   let fontSize = Math.min(baseFontSize, 96)
   const MIN_SIZE = 8
@@ -600,8 +602,6 @@ function calculateFontSize(widthPt, heightPt, text, baseFontSize, fontFamily = '
   while (fontSize >= MIN_SIZE) {
     ctx.font = `${toPx(fontSize)}px ${fontFamily}`
     const lineHeightPx = toPx(fontSize) * 1.3
-    const widthPx = toPx(widthPt)
-    const heightPx = toPx(heightPt)
 
     // Character-level wrapping (works for CJK and Latin)
     let line = ''
