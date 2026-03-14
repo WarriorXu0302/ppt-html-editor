@@ -435,7 +435,7 @@ function renderThumbnails() {
     }, { root: container, rootMargin: '100px', threshold: 0.01 })
   }
 
-  state.slides.forEach((slide, i) => {
+  state.slides.forEach((_slide, i) => {
     const item = createThumbItem(i, thumbWidth, !useLazy)
     container.appendChild(item)
     if (useLazy) state.thumbObserver.observe(item)
@@ -492,7 +492,7 @@ function createThumbIframe(item, index, thumbWidth) {
   iframe.style.transform = `scale(${scale})`
   iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin')
   iframe.setAttribute('title', `幻灯片 ${index + 1}`)
-  iframe.scrolling = 'no'
+  iframe.style.overflow = 'hidden'
 
   wrapper.appendChild(iframe)
   item.appendChild(wrapper)
