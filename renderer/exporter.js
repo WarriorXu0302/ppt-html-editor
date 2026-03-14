@@ -8,9 +8,6 @@
  *   → native text boxes, editable in PowerPoint, ~80-90% visual fidelity
  */
 
-import { convertA2UIToStatic } from './a2ui-export.js'
-import { hasA2UIComponents } from './a2ui-loader.js'
-
 let exportCancelled = false
 
 // Reusable iframe to avoid DOM thrashing during batch exports
@@ -116,13 +113,6 @@ async function startExport() {
 async function renderSlideToCanvas(htmlContent, scale) {
   return new Promise((resolve, reject) => {
     const iframe = getOrCreateIframe()
-
-    // Convert A2UI components to static HTML for export
-    // (html2canvas cannot render Web Components)
-    let staticContent = htmlContent
-    if (hasA2UIComponents(htmlContent)) {
-      staticContent = convertA2UIToStatic(htmlContent)
-    }
 
     // Give the browser time to render after content loads
     const capture = () => {
@@ -753,13 +743,7 @@ function loadSlideForExtraction(htmlContent, warnings = null) {
   return new Promise((resolve, reject) => {
     const iframe = getOrCreateIframe()
 
-    // Convert A2UI components to static HTML for extraction
-    let staticContent = htmlContent
-    if (hasA2UIComponents(htmlContent)) {
-      staticContent = convertA2UIToStatic(htmlContent)
-    }
-
-    const blob = new Blob([staticContent], { type: 'text/html' })
+    const blob = new Blob([htmlContent], { type: 'text/html' })
     const blobUrl = URL.createObjectURL(blob)
     iframe.src = blobUrl
     iframe.onload = async () => {

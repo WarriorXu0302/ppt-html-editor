@@ -69,6 +69,9 @@ async function loadConfig() {
   // Ensure new fields exist on old configs
   if (!config.memoryFiles) config.memoryFiles = []
   if (config.styleConfig === undefined) config.styleConfig = null
+  if (config.maxTokens === undefined) config.maxTokens = 16384
+  if (config.temperature === undefined) config.temperature = 0.7
+  if (config.topP === undefined) config.topP = 1.0
 }
 
 async function saveConfig() {

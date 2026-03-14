@@ -1031,6 +1031,17 @@ body.mac #toolbar { padding-left: 84px; }
 
 /* ── Settings Panel ────────────────────────────────────────────────────── */
 #settings-modal .form-input[type="password"] { letter-spacing: 2px; }
+.settings-param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.settings-param-input {
+  width: 100px;
+  flex: none;
+  text-align: right;
+}
 
 /* ── Scrollbars ────────────────────────────────────────────────────────── */
 * { scrollbar-width: thin; scrollbar-color: var(--bg-hover) transparent; }
@@ -1530,39 +1541,6 @@ body.mac #toolbar { padding-left: 84px; }
   opacity: 0.4;
   cursor: not-allowed;
   transform: none;
-}
-
-/* A2UI Toggle */
-.a2ui-toggle-group {
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08) 0%, rgba(6, 182, 212, 0.05) 100%);
-  border-radius: var(--radius-lg);
-  padding: 14px;
-  border: 1px solid rgba(124, 58, 237, 0.2);
-}
-
-.ai-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.ai-checkbox-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.a2ui-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 8px;
-  padding-left: 28px;
-  line-height: 1.5;
 }
 
 .style-preview, #style-preview {

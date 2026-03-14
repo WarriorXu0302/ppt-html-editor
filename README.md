@@ -1,6 +1,6 @@
 # Slide X
 
-一个强大的 HTML 演示文稿编辑器，支持 AI 生成、交互组件和多格式导出。
+一个强大的 HTML 演示文稿编辑器，支持 AI 生成、可视化编辑和多格式导出。
 
 ## ✨ 主要功能
 
@@ -9,7 +9,6 @@
 - 🎨 **风格模板**：11 种预设配色方案，胶囊按钮 + 悬停预览卡片
 - 🖼️ **图片提取风格**：上传 PPT 截图，AI 自动提取配色和布局风格
 - ✏️ **智能修改**：AI 自动识别意图，支持单页智能修改
-- 🎯 **A2UI 交互组件**：支持按钮、卡片、标签页等交互组件
 - 🖼️ **可视化编辑**：双击元素直接编辑，所见即所得
 - 📝 **源码编辑**：CodeMirror 代码编辑器，支持语法高亮
 - 🔄 **撤销重做**：完整的历史记录，每个幻灯片独立管理
@@ -87,21 +86,6 @@ npm start
 2. 输入修改指令（如"把标题改大"、"换成蓝色配色"）
 3. AI 会保持整体风格一致性进行修改
 
-## 🎯 A2UI 交互组件
-
-Slide X 支持在幻灯片中嵌入 A2UI 交互组件，让演示更加生动：
-
-- **按钮**：`<a2ui-button label="点击我" variant="primary"></a2ui-button>`
-- **卡片**：`<a2ui-card title="标题">内容</a2ui-card>`
-- **标签页**：`<a2ui-tabs>` + `<a2ui-tab>`
-- **滑块**：`<a2ui-slider min="0" max="100"></a2ui-slider>`
-
-**编辑/预览模式切换：**
-- 编辑模式：双击文本直接修改
-- 预览模式：A2UI 组件完全可交互
-
-导出时，A2UI 组件会自动转换为静态样式，确保 PPTX/PDF 兼容性。
-
 ## 📖 编辑指南
 
 **可视化编辑：**
@@ -148,7 +132,15 @@ Slide X 支持在幻灯片中嵌入 A2UI 交互组件，让演示更加生动：
 
 - **API Base URL**：OpenAI 兼容接口地址（默认 `https://api.openai.com/v1`）
 - **API Key**：你的 API 密钥
-- **模型名称**：如 `gpt-4o`、`deepseek-chat` 等
+- **模型名称**：手动输入，或点击「查询」按钮自动拉取 `/models` 接口的可用模型列表
+
+**模型参数：**
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| Max Tokens | 单次生成最大 token 数 | 16384 |
+| Temperature | 生成随机性（0 = 确定，2 = 最随机） | 0.7 |
+| Top P | 核采样概率（通常与 Temperature 二选一调整） | 1.0 |
 
 支持 OpenAI、DeepSeek、本地 Ollama 等兼容接口。
 
@@ -184,7 +176,6 @@ Slide X 的开发离不开以下优秀的开源项目：
 - [JSZip](https://stuk.github.io/jszip/) - JavaScript ZIP 压缩库
 - [Mammoth](https://github.com/mwilliamson/mammoth.js) - DOCX 文档解析
 - [pdf-parse](https://www.npmjs.com/package/pdf-parse) - PDF 文档解析
-- [A2UI](https://github.com/nicepkg/a2ui) - Agent-to-UI 声明式交互组件库
 - [GenUI](https://github.com/nicepkg/genui) - Flutter 生成式 UI SDK
 - [文多多 AiPPT](https://docmee.cn) - 商用级 AI 生成 PPT 解决方案
 - [PPTist](https://github.com/pipipi-pikachu/PPTist) - 基于 Vue 的在线 PPT 编辑器

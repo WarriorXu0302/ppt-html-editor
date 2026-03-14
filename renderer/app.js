@@ -7,7 +7,6 @@ import { initEditor, setEditorContent, getEditorContent, applyEditorChanges,
          enableVisualEdit, disableVisualEdit } from './editor.js'
 import { initExporter, showExportModal } from './exporter.js'
 import { initAIPanel } from './ai-panel.js'
-import { injectA2UIRuntime, preloadA2UI, hasA2UIComponents } from './a2ui-loader.js'
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -22,7 +21,7 @@ const state = {
   undoStacks: {},     // { index: [html, ...] }
   redoStacks: {},     // { index: [html, ...] }
   editMode: 'visual', // 'visual' | 'source'
-  previewMode: false, // true = interactive preview (A2UI works), false = editable
+  previewMode: false, // true = interactive preview, false = editable
   sidebarOpen: true,
   aiPanelOpen: false,
   editorOpen: false,
@@ -42,9 +41,6 @@ export async function initApp() {
   if (window.electronAPI.platform === 'darwin') {
     document.body.classList.add('mac')
   }
-
-  // Preload A2UI runtime for faster first render
-  preloadA2UI()
 
   // Initialize sub-modules
   await initEditor(
@@ -121,7 +117,7 @@ function togglePreviewMode() {
   const label = btn.querySelector('.toggle-label')
 
   if (state.previewMode) {
-    // Preview mode: disable visual editing, A2UI components work
+    // Preview mode: disable visual editing
     btn.classList.add('preview-mode')
     icon.textContent = '👁️'
     label.textContent = '预览'
@@ -472,9 +468,8 @@ function createThumbIframe(item, index, thumbWidth) {
   badge.textContent = index + 1
   item.appendChild(badge)
 
-  // Load content via blob URL (inject A2UI runtime if needed)
-  let content = state.slides[index].content
-  content = injectA2UIRuntime(content)
+  // Load content via blob URL
+  const content = state.slides[index].content
   const blob = new Blob([content], { type: 'text/html' })
   const blobUrl = URL.createObjectURL(blob)
   iframe.src = blobUrl
@@ -491,9 +486,7 @@ function refreshThumb(index) {
   const iframe = item.querySelector('iframe')
   if (!iframe) return
 
-  // Inject A2UI runtime if needed
-  let content = state.slides[index].content
-  content = injectA2UIRuntime(content)
+  const content = state.slides[index].content
   const blob = new Blob([content], { type: 'text/html' })
   const blobUrl = URL.createObjectURL(blob)
   iframe.src = blobUrl
@@ -526,9 +519,7 @@ function renderPreview() {
     state.visualEditActive = false
   }
 
-  // Inject A2UI runtime if needed
-  let content = state.slides[state.currentIndex].content
-  content = injectA2UIRuntime(content)
+  const content = state.slides[state.currentIndex].content
   const blob = new Blob([content], { type: 'text/html' })
   const blobUrl = URL.createObjectURL(blob)
   iframe.src = blobUrl
@@ -787,10 +778,8 @@ async function openPresentation() {
   const total = state.slides.length
 
   // Build each slide as an iframe[srcdoc] so CSS is fully isolated
-  // Inject A2UI runtime if any slide contains A2UI components
   const slideFrames = state.slides.map((slide, i) => {
-    let content = slide.content
-    content = injectA2UIRuntime(content)
+    const content = slide.content
     const encoded = content.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
     const cls = i === startIdx ? ' class="active"' : ''
     return `<iframe${cls} sandbox="allow-scripts allow-same-origin" scrolling="no" srcdoc="${encoded}"></iframe>`
