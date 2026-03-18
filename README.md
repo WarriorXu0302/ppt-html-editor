@@ -180,40 +180,6 @@ npm run build:win
 npm run build:all
 ```
 
-## 👥 Contributors
-
-感谢所有为 SlideGen 做出贡献的人！（[emoji 含义说明](https://allcontributors.org/docs/en/emoji-key)）
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tbody>
-    <tr>
-      <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/WarriorXu0302">
-          <img src="https://avatars.githubusercontent.com/u/211244072?v=4" width="100px;" alt="Warrior Xu"/><br />
-          <sub><b>Warrior Xu</b></sub>
-        </a><br />
-        <a href="#code-WarriorXu0302" title="Code">💻</a>
-        <a href="#ideas-WarriorXu0302" title="Ideas & Planning">🤔</a>
-        <a href="#maintenance-WarriorXu0302" title="Maintenance">🚧</a>
-      </td>
-      <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/ln172">
-          <img src="https://avatars.githubusercontent.com/u/101444324?v=4" width="100px;" alt="ln172"/><br />
-          <sub><b>ln172</b></sub>
-        </a><br />
-        <a href="https://github.com/WarriorXu0302/SlideGen/commits?author=ln172" title="Bug fixes">🐛</a>
-        <a href="https://github.com/WarriorXu0302/SlideGen/commits?author=ln172" title="Performance">⚡</a>
-      </td>
-    </tr>
-  </tbody>
-</table>
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
 ## 🙏 致谢
 
 Slide X 的开发离不开以下优秀的开源项目：
