@@ -141,7 +141,7 @@ async function renderSlideToCanvas(htmlContent, scale) {
     const blobUrl = URL.createObjectURL(blob)
     iframe.src = blobUrl
     iframe.onload = () => { URL.revokeObjectURL(blobUrl); capture() }
-    iframe.onerror = () => { reject(new Error('幻灯片加载失败')) }
+    iframe.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('幻灯片加载失败')) }
   })
 }
 
@@ -995,7 +995,7 @@ function loadSlideForExtraction(htmlContent, warnings = null) {
         reject(err)
       }
     }
-    iframe.onerror = (e) => { reject(e) }
+    iframe.onerror = (e) => { URL.revokeObjectURL(blobUrl); reject(e) }
   })
 }
 
