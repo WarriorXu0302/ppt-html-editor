@@ -35,6 +35,9 @@ const state = {
 // Expose state globally for exporter
 window.appState = state
 
+// Track active preview blob URL so it can be revoked if replaced before onload fires
+let previewBlobUrl = null
+
 // ── Init ───────────────────────────────────────────────────────────────────
 
 export async function initApp() {
@@ -555,10 +558,18 @@ function renderPreview() {
 
   const content = state.slides[state.currentIndex].content
   const blob = new Blob([content], { type: 'text/html' })
+
+  // Revoke previous blob URL if it wasn't cleaned up (rapid navigation before onload)
+  if (previewBlobUrl) {
+    URL.revokeObjectURL(previewBlobUrl)
+  }
+
   const blobUrl = URL.createObjectURL(blob)
+  previewBlobUrl = blobUrl
   iframe.src = blobUrl
   iframe.onload = () => {
     URL.revokeObjectURL(blobUrl)
+    previewBlobUrl = null
     // Only activate visual edit if NOT in preview mode
     if (state.editMode === 'visual' && !state.previewMode) {
       activateVisualEdit(iframe)
