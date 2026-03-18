@@ -245,7 +245,7 @@ function buildMenu() {
               type: 'info',
               title: '关于',
               message: 'Slide X',
-              detail: 'Version 1.0.0\nAI-powered presentation editor'
+              detail: `Version ${app.getVersion()}\nAI-powered presentation editor`
             })
           }
         }
