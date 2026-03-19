@@ -235,13 +235,19 @@ function handleVisualDblClick(e) {
   el.style.outline = '2px solid #E67E22'
   el.style.background = 'rgba(230, 126, 34, 0.08)'
 
+  // Focus is required on Windows — without it the element is contentEditable
+  // but never receives keyboard input (macOS handles this implicitly on dblclick)
+  el.focus()
+
   // Place cursor at end
   const range = doc.createRange()
-  const sel = doc.getSelection()
-  range.selectNodeContents(el)
-  range.collapse(false)
-  sel.removeAllRanges()
-  sel.addRange(range)
+  const sel = doc.defaultView?.getSelection() ?? doc.getSelection()
+  if (sel) {
+    range.selectNodeContents(el)
+    range.collapse(false)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
 
   // Clean up any previous listeners to prevent duplicates
   const handleBlur = () => {
