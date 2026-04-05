@@ -869,43 +869,56 @@ body.mac #toolbar { padding-left: 84px; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
   pointer-events: none;
   background:
     radial-gradient(ellipse at 30% 30%, rgba(124, 58, 237, 0.12) 0%, transparent 50%),
     radial-gradient(ellipse at 70% 70%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
     var(--bg-base);
   z-index: 5;
+  animation: welcomeFadeIn 0.6s ease-out;
+}
+@keyframes welcomeFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
 }
 #welcome.hidden { display: none; }
 /* Hide preview wrapper when welcome is visible */
 #welcome:not(.hidden) ~ #preview-wrapper { visibility: hidden; }
 
 #welcome-icon {
-  font-size: 64px;
-  opacity: 0.3;
-  animation: float 4s ease-in-out infinite;
+  font-size: 56px;
+  opacity: 0.5;
+  animation: welcomePulse 3s ease-in-out infinite;
 }
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+@keyframes welcomePulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50%      { transform: scale(1.08); opacity: 0.7; }
 }
 
 #welcome h2 {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   background: var(--gradient-accent);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: -0.5px;
+  animation: welcomeSlideUp 0.6s ease-out both;
+  animation-delay: 0.1s;
 }
 #welcome p {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
   text-align: center;
   line-height: 1.8;
-  max-width: 360px;
+  max-width: 340px;
+  animation: welcomeSlideUp 0.6s ease-out both;
+  animation-delay: 0.2s;
+}
+@keyframes welcomeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Modal ─────────────────────────────────────────────────────────────── */

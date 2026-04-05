@@ -266,6 +266,8 @@ function createWindow() {
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    show: false,
+    backgroundColor: '#1a1a1a',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     acceptFirstMouse: true,
@@ -277,6 +279,10 @@ function createWindow() {
       // In production, consider using a custom protocol or local bundling
       webSecurity: false
     }
+  })
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
   })
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))

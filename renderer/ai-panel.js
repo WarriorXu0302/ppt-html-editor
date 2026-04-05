@@ -1236,7 +1236,6 @@ async function streamCompletion(config, systemPrompt, userPrompt, onChunk, maxTo
   const temperature = config.temperature ?? 0.7
   const topP = config.topP ?? 1.0
 
-  // 验证 URL 格式
   if (!isValidUrl(baseUrl)) {
     throw new Error('API Base URL 格式无效')
   }
@@ -1273,7 +1272,6 @@ async function streamCompletion(config, systemPrompt, userPrompt, onChunk, maxTo
 
       if (!response.ok) {
         const err = await response.text()
-        // Only retry on transient errors
         if ([429, 502, 503].includes(response.status) && attempt < MAX_RETRIES) {
           lastError = new Error(`API Error ${response.status}: ${err}`)
           await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]))
@@ -1282,47 +1280,46 @@ async function streamCompletion(config, systemPrompt, userPrompt, onChunk, maxTo
         throw new Error(`API Error ${response.status}: ${err}`)
       }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let fullContent = ''
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let fullContent = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
 
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data: ')) continue
-      const data = trimmed.slice(6)
-      if (data === '[DONE]') continue
-      try {
-        const parsed = JSON.parse(data)
-        const delta = parsed.choices?.[0]?.delta?.content || ''
-        if (delta) {
-          fullContent += delta
-          onChunk(delta, fullContent.length)
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('data: ')) continue
+          const data = trimmed.slice(6)
+          if (data === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(data)
+            const delta = parsed.choices?.[0]?.delta?.content || ''
+            if (delta) {
+              fullContent += delta
+              onChunk(delta, fullContent.length)
+            }
+          } catch (e) {
+            // Skip malformed chunks
+          }
         }
-      } catch (e) {
-        // Skip malformed chunks
       }
-    }
-  }
 
-  return fullContent
-      } catch (err) {
-        lastError = err
-        if (err.name === 'AbortError') throw err
-        if (attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]))
-          continue
-        }
-        throw err
+      return fullContent
+    } catch (err) {
+      lastError = err
+      if (err.name === 'AbortError') throw err
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]))
+        continue
       }
+      throw err
     }
   }
   throw lastError
