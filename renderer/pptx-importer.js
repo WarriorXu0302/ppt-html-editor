@@ -45,6 +45,10 @@ export async function importPPTX(byteArray) {
     const relsDoc = slideRelsXml
       ? new DOMParser().parseFromString(slideRelsXml, 'application/xml')
       : null
+    if (relsDoc?.querySelector('parsererror')) {
+      console.warn('Invalid XML in slide relationships:', slideName)
+      return null
+    }
     const slideLayoutXml = await resolveSlideLayout(zip, relsDoc, layoutCache)
 
     const { html, title, notes } = await convertSlideToHtml(slideXml, relsDoc, slideLayoutXml, zip)
@@ -98,6 +102,9 @@ async function resolveSlideLayout(zip, relsDoc, layoutCache) {
 
 async function convertSlideToHtml(slideXml, relsDoc, slideLayoutXml, zip) {
   const doc = new DOMParser().parseFromString(slideXml, 'application/xml')
+  if (doc.querySelector('parsererror')) {
+    throw new Error('Invalid slide XML: ' + doc.querySelector('parsererror').textContent.slice(0, 200))
+  }
   const layoutDoc = slideLayoutXml
     ? new DOMParser().parseFromString(slideLayoutXml, 'application/xml')
     : null
@@ -144,8 +151,10 @@ function extractBackground(doc, layoutDoc) {
 
 function extractTextBoxes(doc) {
   const boxes = []
+  const MAX_TEXT_BOXES_PER_SLIDE = 100
 
   for (const sp of doc.querySelectorAll('sp')) {
+    if (boxes.length >= MAX_TEXT_BOXES_PER_SLIDE) break
     const phType = sp.querySelector('ph')?.getAttribute('type') || ''
     const isTitle = phType === 'title' || phType === 'ctrTitle'
 
@@ -197,12 +206,15 @@ async function extractImages(doc, relsDoc, zip) {
   const images = []
   if (!relsDoc) return images
 
+  const MAX_IMAGES_PER_SLIDE = 50
+
   const relMap = {}
   for (const r of relsDoc.querySelectorAll('Relationship')) {
     relMap[r.getAttribute('Id')] = r.getAttribute('Target')
   }
 
   for (const pic of doc.querySelectorAll('pic')) {
+    if (images.length >= MAX_IMAGES_PER_SLIDE) break
     const rEmbed = pic.querySelector('blipFill blip')?.getAttribute('r:embed') ||
                    pic.querySelector('blipFill blip')?.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed')
     if (!rEmbed) continue

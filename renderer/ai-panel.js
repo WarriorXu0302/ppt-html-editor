@@ -1155,9 +1155,9 @@ function applyConfigToForms(config) {
 
 function getStyleParams() {
   return {
-    colorTemp: parseInt(document.getElementById('style-color-temp')?.value || '50'),
-    contrast: parseInt(document.getElementById('style-contrast')?.value || '50'),
-    density: parseInt(document.getElementById('style-density')?.value || '50')
+    colorTemp: Math.max(0, Math.min(100, parseInt(document.getElementById('style-color-temp')?.value || '50'))),
+    contrast: Math.max(0, Math.min(100, parseInt(document.getElementById('style-contrast')?.value || '50'))),
+    density: Math.max(0, Math.min(100, parseInt(document.getElementById('style-density')?.value || '50')))
   }
 }
 
@@ -1241,32 +1241,46 @@ async function streamCompletion(config, systemPrompt, userPrompt, onChunk, maxTo
     throw new Error('API Base URL 格式无效')
   }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      stream: true,
-      max_tokens: resolvedMaxTokens,
-      temperature,
-      // Only send top_p when explicitly changed from default (1.0),
-      // because some models (Claude via Bedrock) reject requests with both params.
-      ...(topP !== 1.0 ? { top_p: topP } : {})
-    }),
-    signal: currentAbortController.signal
-  })
+  const MAX_RETRIES = 3
+  const RETRY_DELAYS = [1000, 2000, 4000]
+  let lastError = null
 
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`API Error ${response.status}: ${err}`)
-  }
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (currentAbortController.signal.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          stream: true,
+          max_tokens: resolvedMaxTokens,
+          temperature,
+          ...(topP !== 1.0 ? { top_p: topP } : {})
+        }),
+        signal: currentAbortController.signal
+      })
+
+      if (!response.ok) {
+        const err = await response.text()
+        // Only retry on transient errors
+        if ([429, 502, 503].includes(response.status) && attempt < MAX_RETRIES) {
+          lastError = new Error(`API Error ${response.status}: ${err}`)
+          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]))
+          continue
+        }
+        throw new Error(`API Error ${response.status}: ${err}`)
+      }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -1300,6 +1314,18 @@ async function streamCompletion(config, systemPrompt, userPrompt, onChunk, maxTo
   }
 
   return fullContent
+      } catch (err) {
+        lastError = err
+        if (err.name === 'AbortError') throw err
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]))
+          continue
+        }
+        throw err
+      }
+    }
+  }
+  throw lastError
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────

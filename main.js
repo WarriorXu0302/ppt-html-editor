@@ -324,7 +324,11 @@ ipcMain.handle('read-file', async (event, filePath) => {
   if (!isAllowedReadPath(filePath)) {
     throw new Error('Access to this path is not allowed')
   }
-  return fsPromises.readFile(filePath, 'utf8')
+  try {
+    return await fsPromises.readFile(filePath, 'utf8')
+  } catch (err) {
+    throw new Error('读取文件失败: ' + err.message)
+  }
 })
 
 ipcMain.handle('write-file', async (event, filePath, content) => {
@@ -353,10 +357,24 @@ ipcMain.handle('show-save-dialog', async (event, defaultPath) => {
 
 ipcMain.handle('get-config', () => config)
 
+// Allowed config keys — reject unknown properties to prevent config corruption
+const ALLOWED_CONFIG_KEYS = new Set([
+  'recentFiles', 'apiKey', 'baseUrl', 'model', 'memoryFiles', 'styleConfig',
+  'maxTokens', 'temperature', 'topP'
+])
+
 ipcMain.handle('set-config', (event, updates) => {
-  config = { ...config, ...updates }
+  if (!updates || typeof updates !== 'object') return false
+  // Only accept known config keys
+  const filtered = {}
+  for (const [key, value] of Object.entries(updates)) {
+    if (ALLOWED_CONFIG_KEYS.has(key)) {
+      filtered[key] = value
+    }
+  }
+  config = { ...config, ...filtered }
   saveConfig()
-  if (updates.recentFiles !== undefined) buildMenu()
+  if (filtered.recentFiles !== undefined) buildMenu()
   return true
 })
 
@@ -375,9 +393,13 @@ ipcMain.handle('open-pptx-file', async () => {
   })
   if (result.canceled || !result.filePaths.length) return null
   const filePath = result.filePaths[0]
-  const buffer = await fsPromises.readFile(filePath)
-  // Transfer as plain array so it can pass through IPC serialization
-  return { filePath, data: Array.from(buffer) }
+  try {
+    const buffer = await fsPromises.readFile(filePath)
+    // Transfer as plain array so it can pass through IPC serialization
+    return { filePath, data: Array.from(buffer) }
+  } catch (err) {
+    throw new Error('读取 PPTX 文件失败: ' + err.message)
+  }
 })
 
 ipcMain.on('set-title', (event, title) => {
@@ -477,7 +499,7 @@ ipcMain.handle('parse-memory-file', async (_event, filePath) => {
       uploadTime: new Date().toISOString()
     }
   } catch (e) {
-    throw e
+    throw new Error('解析文件失败: ' + e.message)
   }
 })
 
@@ -517,7 +539,7 @@ ipcMain.handle('update-memory-tags', async (_event, fileId, tags) => {
 ipcMain.handle('open-presentation', async (_event, htmlContent) => {
   // htmlContent is already a fully self-contained presentation HTML
   // built by app.js — no injection needed here
-  const tmpFile = path.join(os.tmpdir(), `ppt-pres-${Date.now()}.html`)
+  const tmpFile = path.join(os.tmpdir(), `ppt-pres-${randomUUID()}.html`)
   await fsPromises.writeFile(tmpFile, htmlContent, 'utf8')
 
   const presWindow = new BrowserWindow({

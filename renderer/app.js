@@ -230,8 +230,14 @@ function setupEditorResize() {
   const handle = document.getElementById('editor-resize-handle')
   const drawer = document.getElementById('editor-drawer')
 
+  let abortController = null
+
   handle.addEventListener('mousedown', (e) => {
     e.preventDefault()
+    // Clean up any previous drag session
+    if (abortController) abortController.abort()
+    abortController = new AbortController()
+
     state.isResizingEditor = true
     const startY = e.clientY
     const startH = state.editorHeight
@@ -245,12 +251,12 @@ function setupEditorResize() {
 
     const onUp = () => {
       state.isResizingEditor = false
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      abortController.abort()
+      abortController = null
     }
 
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
+    document.addEventListener('mousemove', onMove, { signal: abortController.signal })
+    document.addEventListener('mouseup', onUp, { signal: abortController.signal })
   })
 }
 
@@ -567,15 +573,19 @@ function renderPreview() {
   const blobUrl = URL.createObjectURL(blob)
   previewBlobUrl = blobUrl
   iframe.src = blobUrl
-  iframe.onload = () => {
+  const cleanupPreviewBlob = () => {
     URL.revokeObjectURL(blobUrl)
-    previewBlobUrl = null
+    if (previewBlobUrl === blobUrl) previewBlobUrl = null
+  }
+  iframe.onload = () => {
+    cleanupPreviewBlob()
     // Only activate visual edit if NOT in preview mode
     if (state.editMode === 'visual' && !state.previewMode) {
       activateVisualEdit(iframe)
     }
     scalePreview()
   }
+  iframe.onerror = () => { cleanupPreviewBlob() }
 
   updatePageInfo()
   updateNavButtons()
@@ -985,7 +995,7 @@ showHUD();
 <\/script>
 </body></html>`
 
-  await window.electronAPI.openPresentation(presHtml, startIdx)
+  await window.electronAPI.openPresentation(presHtml)
 }
 
 // ── Dirty / Title ─────────────────────────────────────────────────────────
@@ -1014,13 +1024,22 @@ function showWelcome(show) {
 
 initApp().catch(err => {
   console.error('App initialization failed:', err)
-  // Show error to user
+  // Show error to user (safe DOM construction — no innerHTML to avoid XSS)
   const welcome = document.getElementById('welcome')
   if (welcome) {
-    welcome.innerHTML = `
-      <div id="welcome-icon">⚠️</div>
-      <h2>初始化失败</h2>
-      <p>${err.message || '未知错误'}<br><br>请刷新页面重试</p>
-    `
+    welcome.textContent = ''
+    const icon = document.createElement('div')
+    icon.id = 'welcome-icon'
+    icon.textContent = '⚠️'
+    const h2 = document.createElement('h2')
+    h2.textContent = '初始化失败'
+    const p = document.createElement('p')
+    p.textContent = err.message || '未知错误'
+    p.appendChild(document.createElement('br'))
+    p.appendChild(document.createElement('br'))
+    p.appendChild(document.createTextNode('请刷新页面重试'))
+    welcome.appendChild(icon)
+    welcome.appendChild(h2)
+    welcome.appendChild(p)
   }
 })

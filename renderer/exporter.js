@@ -140,8 +140,11 @@ async function renderSlideToCanvas(htmlContent, scale) {
     const blob = new Blob([htmlContent], { type: 'text/html' })
     const blobUrl = URL.createObjectURL(blob)
     iframe.src = blobUrl
-    iframe.onload = () => { URL.revokeObjectURL(blobUrl); capture() }
-    iframe.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('幻灯片加载失败')) }
+    const cleanup = () => URL.revokeObjectURL(blobUrl)
+    iframe.onload = () => { cleanup(); capture() }
+    iframe.onerror = () => { cleanup(); reject(new Error('幻灯片加载失败')) }
+    // Safety timeout — revoke blob URL if load never fires
+    setTimeout(() => { cleanup(); reject(new Error('幻灯片加载超时')) }, 15000)
   })
 }
 
@@ -883,6 +886,10 @@ async function extractImageElements(iframeDoc, warnings = null) {
         w: Math.max(0.1, rect.width / SLIDE_W * PPT_W),
         h: Math.max(0.1, rect.height / SLIDE_H * PPT_H),
       })
+
+      // Release canvas context
+      canvas.width = 0
+      canvas.height = 0
     } catch (e) {
       // Skip images that fail to convert (CORS issues, etc.)
       console.warn('Failed to extract image:', e)
@@ -996,6 +1003,8 @@ function loadSlideForExtraction(htmlContent, warnings = null) {
       }
     }
     iframe.onerror = (e) => { URL.revokeObjectURL(blobUrl); reject(e) }
+    // Safety timeout
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); reject(new Error('幻灯片加载超时')) }, 15000)
   })
 }
 

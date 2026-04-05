@@ -31,8 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifySaveComplete: () => ipcRenderer.send('save-complete'),
 
   // Presentation window
-  openPresentation: (htmlContent, startIndex) =>
-    ipcRenderer.invoke('open-presentation', htmlContent, startIndex),
+  openPresentation: (htmlContent) =>
+    ipcRenderer.invoke('open-presentation', htmlContent),
 
   // PPTX import
   openPptxFile: () => ipcRenderer.invoke('open-pptx-file'),
@@ -52,7 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'menu-redo', 'menu-open-file', 'menu-new'
     ]
     if (!validChannels.includes(channel)) {
-      return () => {} // Return no-op cleanup function
+      console.warn(`[preload] Invalid menu channel: ${channel}`)
+      return () => {}
     }
 
     // Remove existing listener for this channel to prevent duplicates
@@ -74,10 +75,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   removeMenuListener: (channel) => {
-    if (registeredListeners.has(channel)) {
-      const listener = registeredListeners.get(channel)
-      ipcRenderer.removeListener(channel, listener)
-      registeredListeners.delete(channel)
+    if (!registeredListeners.has(channel)) {
+      console.warn(`[preload] No listener registered for: ${channel}`)
+      return
     }
+    const listener = registeredListeners.get(channel)
+    ipcRenderer.removeListener(channel, listener)
+    registeredListeners.delete(channel)
   }
 })
